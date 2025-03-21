@@ -47,14 +47,13 @@ void ACVRCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 텔레포트 활성화 시 처리
-	if (bTeleporting)
+	// 텔레포트 활성화시 처리
+	if (bTeleporting == true)
 	{
-		if (bTeleportCurve)
-			DrawTeleportCurve();
-
 		// 텔레포트 그리기
-		DrawTeleportStraight();
+		if (bTeleportCurve)
+			 DrawTeleportCurve();
+		else DrawTeleportStraight();
 	}
 }
 
@@ -103,6 +102,11 @@ void ACVRCharacter::OnLook(const FInputActionValue& InVal)
 
 }
 
+void ACVRCharacter::ActiveDebugDraw()
+{
+	bIsDebugDraw = !bIsDebugDraw;
+}
+
 // 텔레포트 설정을 초기화
 // 현재 텔레포트가 가능한지 리턴
 bool ACVRCharacter::ResetTeleport()
@@ -136,37 +140,16 @@ void ACVRCharacter::TeleportEnd(const FInputActionValue& InVal)
 
 void ACVRCharacter::DrawTeleportStraight()
 {
-	// Line 생성
-	FVector start = VRCamera->GetComponentLocation();
-	FVector end = start + VRCamera->GetForwardVector() * 1000;
+	// 1. Line 을 만들기
+	FVector StartPoint = VRCamera->GetComponentLocation();
+	FVector EndPoint = StartPoint + VRCamera->GetForwardVector() * 1000;
+	// 2. Line 을 쏘기
+	bool bHit = CheckHitTeleport(StartPoint, EndPoint);
 
-	// Line 충돌 시 정보를 받을 변수 생성
-	FHitResult info;
-
-	// Character 예외 처리
-	FCollisionQueryParams params;
-	params.AddIgnoredActor(this);
-
-	// Line 쏘기
-	bool bHit = GetWorld()->LineTraceSingleByChannel(info, start, end, ECC_Visibility, params);
-
-	// Line과 충돌하지 않았다면 리턴
-	if (!bHit) return;
-
-	// Line과 충돌했다면
-	// 텔레포트 UI 활성화, 부딪힌 지점에 텔레포트 써클 위치 표시
-	if (info.GetActor()->GetActorNameOrLabel().Contains("GroundFloor"))
-	{
-		TeleportCircle->SetVisibility(true);
-
-		TeleportCircle->SetWorldLocation(info.ImpactPoint);
-
-		// Line 그리기
-		DrawDebugLine(GetWorld(), start, end, FColor::Green, false, -1, 0, 1);
-
-		// 텔레포트 위치 지정
-		TeleportLocation = info.Location;
-	}
+	// 선그리기
+	DrawDebugLine(GetWorld(), StartPoint, EndPoint, FColor::Red, false, -1, 0, 1);
+	if (bIsDebugDraw)
+		DrawDebugSphere(GetWorld(), StartPoint, 200, 20, FColor::Yellow);
 
 }
 
@@ -181,23 +164,56 @@ void ACVRCharacter::DrawTeleportCurve()
 
 	Lines.Add(p0);
 
-	// LineSmooth의 값만큼 반복
-	for (int32 i = 0; i < LineSmooth; ++i)
+	for (int i = 0; i < LineSmooth; i++)
 	{
-		FVector end = p0;
-
+		FVector LastPos = p0;
 		// v = v0 + at
 		vel += FVector::UpVector * Gravity * SimulateTime;
-
 		// P = P0 + vt
 		p0 += vel * SimulateTime;
 
-		// Lines.Add(vertex)
+		bool bHit = CheckHitTeleport(LastPos, p0);
+		// 부딪혔을 때 반복 중단
 		Lines.Add(p0);
 
+		if (bHit)
+			break;
 	}
 
-	for (int32 i = 0; i < LineSmooth - 1; ++i)
+	int LineCount = Lines.Num();
+	for (int i = 0; i < LineCount - 1; i++)
 		DrawDebugLine(GetWorld(), Lines[i], Lines[i + 1], FColor::Red, false, -1, 0, 1);
 
+}
+
+bool ACVRCharacter::CheckHitTeleport(FVector InPrevPoint, FVector& InCurrentPoint)
+{
+	FHitResult HitInfo;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(HitInfo, InPrevPoint, InCurrentPoint, ECC_Visibility, Params);
+	// 3. Line 과 부딪혔다면
+	// 4. 그리고 부딪힌 녀석의 이름에 Floor 가 있다면
+
+	if (bHit && HitInfo.GetActor()->GetActorNameOrLabel().Contains("GroundFloor") == true)
+	{
+		// 텔레포트 UI 활성화
+		TeleportCircle->SetVisibility(true);
+		// -> 부딪힌 지점에 텔레포트 써클 위치시키기
+		TeleportCircle->SetWorldLocation(HitInfo.Location);
+
+		// 텔레포트 위치 지정
+		TeleportLocation = HitInfo.Location;
+
+		InCurrentPoint = TeleportLocation;
+	}
+	// 4. 안부딪혔으면
+	else
+	{
+		// -> 써클 안그려지게 하기
+		TeleportCircle->SetVisibility(false);
+	}
+
+	return bHit;
 }

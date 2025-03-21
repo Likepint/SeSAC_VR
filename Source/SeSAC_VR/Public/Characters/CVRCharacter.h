@@ -50,6 +50,11 @@ private: // Teleport
 	// 텔레포트 진행여부
 	bool bTeleporting = false;
 
+	UFUNCTION(Exec)
+	void ActiveDebugDraw();
+
+	bool bIsDebugDraw = false;
+
 	// 텔레포트 리셋
 	bool ResetTeleport();
 
@@ -86,5 +91,7 @@ private: // Curve Teleport
 
 	// 곡선 텔레포트 그리기
 	void DrawTeleportCurve();
+
+	bool CheckHitTeleport(FVector InPrevPoint, FVector& InCurrentPoint);
 
 };
